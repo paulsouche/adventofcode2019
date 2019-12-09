@@ -1,11 +1,12 @@
 use permutohedron;
+use std::collections::HashMap;
 use std::{collections::VecDeque, fs::read_to_string, io};
 
 fn main() -> io::Result<()> {
-    let program: Vec<i32> = read_to_string("input.txt")?
+    let program: Vec<isize> = read_to_string("input.txt")?
         .trim()
         .split(',')
-        .map(|line| line.parse::<i32>().unwrap())
+        .map(|line| line.parse::<isize>().unwrap())
         .collect();
 
     println!(
@@ -19,12 +20,12 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn find_higher_output(program: &mut Vec<i32>, phases: &mut [i8; 5]) -> i32 {
+fn find_higher_output(program: &mut Vec<isize>, phases: &mut [isize; 5]) -> isize {
     let mut permutations = Vec::new();
 
     permutohedron::heap_recursive(phases, |x| permutations.push(x.to_vec()));
 
-    let mut output_max = i32::min_value();
+    let mut output_max = isize::min_value();
 
     let mut amps = [
         IntcodeComputer::new(),
@@ -37,8 +38,8 @@ fn find_higher_output(program: &mut Vec<i32>, phases: &mut [i8; 5]) -> i32 {
     for permutation in permutations {
         for x in 0..5 {
             amps[x].reset();
-            amps[x].instructions = program.clone();
-            amps[x].push_input(permutation[x] as i32);
+            amps[x].push_instructions(program.clone());
+            amps[x].push_input(permutation[x]);
         }
 
         let mut index = 0;
@@ -71,20 +72,22 @@ fn find_higher_output(program: &mut Vec<i32>, phases: &mut [i8; 5]) -> i32 {
 enum ProgramState {
     Halted,
     NeedInput,
-    Output(i32),
+    Output(isize),
 }
 
 struct IntcodeComputer {
-    instructions: Vec<i32>,
+    instructions: HashMap<usize, isize>,
     pointer: usize,
-    inputs: VecDeque<i32>,
+    relative_base: isize,
+    inputs: VecDeque<isize>,
 }
 
 impl IntcodeComputer {
     fn new() -> Self {
         IntcodeComputer {
-            instructions: vec![],
+            instructions: HashMap::new(),
             pointer: 0,
+            relative_base: 0,
             inputs: VecDeque::new(),
         }
     }
@@ -95,19 +98,25 @@ impl IntcodeComputer {
         self.inputs.clear();
     }
 
-    fn push_input(&mut self, input: i32) {
+    fn push_instructions(&mut self, program: Vec<isize>) {
+        for ind in 0..program.len() {
+            self.instructions.insert(ind, program[ind]);
+        }
+    }
+
+    fn push_input(&mut self, input: isize) {
         self.inputs.push_back(input);
     }
 
     fn run(&mut self) -> ProgramState {
-        if self.instructions[self.pointer] == 99 {
+        if self.instructions[&self.pointer] == 99 {
             return ProgramState::Halted;
         }
 
-        let mut output: Option<i32> = None;
+        let mut output: Option<isize> = None;
 
         loop {
-            let value = self.instructions[self.pointer];
+            let value = self.instructions[&self.pointer];
             let operator = value - (value / 100) * 100;
             let mode1 = (value - (value / 1000) * 1000) / 100;
             let mode2 = (value - (value / 10000) * 10000) / 1000;
@@ -121,54 +130,54 @@ impl IntcodeComputer {
                 1 => {
                     let value_param1 = self.get_instruction_value(
                         &mode1,
-                        self.instructions[self.pointer + 1] as usize,
+                        self.instructions[&(self.pointer + 1)] as usize,
                     );
                     let value_param2 = self.get_instruction_value(
                         &mode2,
-                        self.instructions[self.pointer + 2] as usize,
+                        self.instructions[&(self.pointer + 2)] as usize,
                     );
-                    let ind = self.instructions[self.pointer + 3] as usize;
+                    let ind = self.instructions[&(self.pointer + 3)] as usize;
 
-                    self.instructions[ind] = value_param1 + value_param2;
+                    self.instructions.insert(ind, value_param1 + value_param2);
                     self.pointer += 4;
                 }
                 2 => {
                     let value_param1 = self.get_instruction_value(
                         &mode1,
-                        self.instructions[self.pointer + 1] as usize,
+                        self.instructions[&(self.pointer + 1)] as usize,
                     );
                     let value_param2 = self.get_instruction_value(
                         &mode2,
-                        self.instructions[self.pointer + 2] as usize,
+                        self.instructions[&(self.pointer + 2)] as usize,
                     );
-                    let ind = self.instructions[self.pointer + 3] as usize;
+                    let ind = self.instructions[&(self.pointer + 3)] as usize;
 
-                    self.instructions[ind] = value_param1 * value_param2;
+                    self.instructions.insert(ind, value_param1 * value_param2);
                     self.pointer += 4;
                 }
                 3 => {
-                    let ind = self.instructions[self.pointer + 1] as usize;
-                    self.instructions[ind] = match self.inputs.pop_front() {
+                    let ind = self.instructions[&(self.pointer + 1)] as usize;
+                    self.instructions.insert(ind, match self.inputs.pop_front() {
                         Some(x) => x,
                         None => return ProgramState::NeedInput,
-                    };
+                    });
                     self.pointer += 2;
                 }
                 4 => {
-                    let ind = self.instructions[self.pointer + 1] as usize;
+                    let ind = self.instructions[&(self.pointer + 1)] as usize;
 
-                    output = Some(self.instructions[ind]);
+                    output = Some(self.instructions[&ind]);
                     self.pointer += 2;
                 }
                 5 => {
                     let value_param1 = self.get_instruction_value(
                         &mode1,
-                        self.instructions[self.pointer + 1] as usize,
+                        self.instructions[&(self.pointer + 1)] as usize,
                     );
                     if value_param1 != 0 {
                         self.pointer = self.get_instruction_value(
                             &mode2,
-                            self.instructions[self.pointer + 2] as usize,
+                            self.instructions[&(self.pointer + 2)] as usize,
                         ) as usize;
                     } else {
                         self.pointer += 3;
@@ -177,12 +186,12 @@ impl IntcodeComputer {
                 6 => {
                     let value_param1 = self.get_instruction_value(
                         &mode1,
-                        self.instructions[self.pointer + 1] as usize,
+                        self.instructions[&(self.pointer + 1)] as usize,
                     );
                     if value_param1 == 0 {
                         self.pointer = self.get_instruction_value(
                             &mode2,
-                            self.instructions[self.pointer + 2] as usize,
+                            self.instructions[&(self.pointer + 2)] as usize,
                         ) as usize;
                     } else {
                         self.pointer += 3;
@@ -191,38 +200,46 @@ impl IntcodeComputer {
                 7 => {
                     let value_param1 = self.get_instruction_value(
                         &mode1,
-                        self.instructions[self.pointer + 1] as usize,
+                        self.instructions[&(self.pointer + 1)] as usize,
                     );
                     let value_param2 = self.get_instruction_value(
                         &mode2,
-                        self.instructions[self.pointer + 2] as usize,
+                        self.instructions[&(self.pointer + 2)] as usize,
                     );
-                    let ind = self.instructions[self.pointer + 3] as usize;
+                    let ind = self.instructions[&(self.pointer + 3)] as usize;
 
                     if value_param1 < value_param2 {
-                        self.instructions[ind] = 1;
+                        self.instructions.insert(ind, 1);
                     } else {
-                        self.instructions[ind] = 0;
+                        self.instructions.insert(ind, 0);
                     }
                     self.pointer += 4;
                 }
                 8 => {
                     let value_param1 = self.get_instruction_value(
                         &mode1,
-                        self.instructions[self.pointer + 1] as usize,
+                        self.instructions[&(self.pointer + 1)] as usize,
                     );
                     let value_param2 = self.get_instruction_value(
                         &mode2,
-                        self.instructions[self.pointer + 2] as usize,
+                        self.instructions[&(self.pointer + 2)] as usize,
                     );
-                    let ind = self.instructions[self.pointer + 3] as usize;
+                    let ind = self.instructions[&(self.pointer + 3)] as usize;
 
                     if value_param1 == value_param2 {
-                        self.instructions[ind] = 1;
+                        self.instructions.insert(ind, 1);
                     } else {
-                        self.instructions[ind] = 0;
+                        self.instructions.insert(ind, 0);
                     }
                     self.pointer += 4;
+                }
+                9 => {
+                    let value_param1 = self.get_instruction_value(
+                        &mode1,
+                        self.instructions[&(self.pointer + 1)] as usize,
+                    );
+                    self.relative_base += value_param1;
+                    self.pointer += 2;
                 }
                 n => panic!("Unknown opcode {}", n),
             }
@@ -235,10 +252,11 @@ impl IntcodeComputer {
         ProgramState::Halted
     }
 
-    fn get_instruction_value(&self, mode: &i32, ind: usize) -> i32 {
+    fn get_instruction_value(&self, mode: &isize, ind: usize) -> isize {
         match mode {
-            0 => self.instructions[ind],
-            1 => ind as i32,
+            0 => self.instructions[&ind],
+            1 => ind as isize,
+            2 => self.instructions[&(ind + self.relative_base as usize)],
             n => panic!("Unknown mode {}", n),
         }
     }
@@ -250,7 +268,7 @@ mod tests {
 
     #[test]
     fn it_should_find_higher_output_1() {
-        let program: Vec<i32> = vec![
+        let program: Vec<isize> = vec![
             3, 15, 3, 16, 1002, 16, 10, 16, 1, 16, 15, 15, 4, 15, 99, 0, 0,
         ];
         assert_eq!(
@@ -261,7 +279,7 @@ mod tests {
 
     #[test]
     fn it_should_find_higher_output_2() {
-        let program: Vec<i32> = vec![
+        let program: Vec<isize> = vec![
             3, 23, 3, 24, 1002, 24, 10, 24, 1002, 23, -1, 23, 101, 5, 23, 23, 1, 24, 23, 23, 4, 23,
             99, 0, 0,
         ];
@@ -273,7 +291,7 @@ mod tests {
 
     #[test]
     fn it_should_find_higher_output_3() {
-        let program: Vec<i32> = vec![
+        let program: Vec<isize> = vec![
             3, 31, 3, 32, 1002, 32, 10, 32, 1001, 31, -2, 31, 1007, 31, 0, 33, 1002, 33, 7, 33, 1,
             33, 31, 31, 1, 32, 31, 31, 4, 31, 99, 0, 0, 0,
         ];
@@ -285,7 +303,7 @@ mod tests {
 
     #[test]
     fn it_should_find_higher_output_in_feedback_loop_1() {
-        let program: Vec<i32> = vec![
+        let program: Vec<isize> = vec![
             3, 26, 1001, 26, -4, 26, 3, 27, 1002, 27, 2, 27, 1, 27, 26, 27, 4, 27, 1001, 28, -1,
             28, 1005, 28, 6, 99, 0, 0, 5,
         ];
@@ -297,7 +315,7 @@ mod tests {
 
     #[test]
     fn it_should_find_higher_output_in_feedback_loop_2() {
-        let program: Vec<i32> = vec![
+        let program: Vec<isize> = vec![
             3, 52, 1001, 52, -5, 52, 3, 53, 1, 52, 56, 54, 1007, 54, 5, 55, 1005, 55, 26, 1001, 54,
             -5, 54, 1105, 1, 12, 1, 53, 54, 53, 1008, 54, 0, 55, 1001, 55, 1, 55, 2, 53, 55, 53, 4,
             53, 1001, 56, -1, 56, 1005, 56, 6, 99, 0, 0, 0, 0, 10,
