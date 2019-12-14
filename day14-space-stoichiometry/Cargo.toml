@@ -1,0 +1,10 @@
+[package]
+name = "day14-space-stoichiometry"
+version = "0.1.0"
+authors = ["Paul Souche <paul.souche@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+regex = "1"
